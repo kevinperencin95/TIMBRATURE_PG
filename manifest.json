@@ -1,7 +1,7 @@
 {
-  "name": "Timbrature C.A.M. Srl",
-  "short_name": "Timbrature CAM",
-  "description": "App di timbratura dipendenti C.A.M. Srl - Centro Autotrasporto Merci",
+  "name": "Timbrature C.A.M. Srl - SDA Perugia",
+  "short_name": "Timbrature Perugia",
+  "description": "App di timbratura dipendenti C.A.M. Srl - SDA Perugia",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
