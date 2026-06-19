@@ -351,9 +351,15 @@
 </div>
 
 <script>
-const STORE_KEY_EMP = 'employees';
-const STORE_KEY_LOG = 'attendance_log';
-const STORE_KEY_QUEUE = 'pending_queue';
+// Identificatore univoco per questa app: evita che i dati si mescolino con
+// altre app di timbratura dello stesso account/dominio (es. altri cantieri
+// pubblicati sotto lo stesso sito GitHub Pages condividono lo stesso
+// "spazio" di salvataggio del browser se non distinti così).
+const APP_ID = 'cam_sedeprincipale_';
+const STORE_KEY_EMP = APP_ID + 'employees';
+const STORE_KEY_LOG = APP_ID + 'attendance_log';
+const STORE_KEY_QUEUE = APP_ID + 'pending_queue';
+const STORE_KEY_URL = APP_ID + 'sheetsUrl';
 let employees = {};
 let log = [];
 let pendingQueue = [];
@@ -362,7 +368,7 @@ const DEFAULT_EMPLOYEES = {"62620": "ABBATE DAVIDE", "31802": "ANGELI SOFIA", "3
 
 const DEFAULT_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwqpjHdyNLaCu9iiOvJcusNqGnrHr3IMOaYSJQDHWEmeYkIO99u9AtHdjSM7qRblbAxeA/exec';
 function getSheetsUrl(){
-  const stored = localStorage.getItem('sheetsUrl');
+  const stored = localStorage.getItem(STORE_KEY_URL);
   if(stored !== null) return stored; // se l'utente l'ha svuotato di proposito, rispetta la scelta
   return DEFAULT_SHEETS_URL;
 }
@@ -952,7 +958,7 @@ loadData();
 
 document.getElementById('btnSaveUrl').addEventListener('click', async ()=>{
   const val = document.getElementById('sheetsUrlInput').value.trim();
-  localStorage.setItem('sheetsUrl', val);
+  localStorage.setItem(STORE_KEY_URL, val);
   const status = document.getElementById('sheetsUrlStatus');
   if(!val){
     status.textContent = "Collegamento rimosso: l'app userà solo il salvataggio locale sul dispositivo.";
