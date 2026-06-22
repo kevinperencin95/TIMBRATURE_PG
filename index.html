@@ -261,6 +261,7 @@
           <button class="ghost small" id="btnExportCsv">Esporta CSV (Google Sheets)</button>
         </div>
       </div>
+      <div class="hint" id="logSummary" style="margin-bottom:14px;font-weight:700;color:var(--brand-deep);"></div>
       <button class="ghost" id="btnShowManual" style="width:100%;margin-bottom:14px;">+ Aggiungi timbratura manuale</button>
 
       <div id="manualForm" style="display:none;margin-bottom:18px;padding:16px;background:var(--card2);border:1px dashed var(--line);border-radius:14px;">
@@ -269,8 +270,8 @@
         <datalist id="empDatalist"></datalist>
         <div class="row">
           <input type="date" id="manualDate" style="margin:0;">
-          <input type="time" step="1" id="manualIn" placeholder="Entrata" style="margin:0;">
-          <input type="time" step="1" id="manualOut" placeholder="Uscita (opzionale)" style="margin:0;">
+          <input type="time" id="manualIn" placeholder="Entrata" style="margin:0;">
+          <input type="time" id="manualOut" placeholder="Uscita (opzionale)" style="margin:0;">
         </div>
         <div class="row" style="margin-top:10px;">
           <button class="green" id="btnSaveManual">Salva timbratura</button>
@@ -456,7 +457,7 @@ setInterval(()=>{ if(navigator.onLine) flushQueue(); }, 30000);
 
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
-function nowStr(){ return new Date().toTimeString().slice(0,8); }
+function nowStr(){ return new Date().toTimeString().slice(0,5); }
 function fmtDate(d){
   const [y,m,day] = d.split('-');
   return day+'/'+m+'/'+y;
@@ -634,8 +635,7 @@ document.getElementById('btnSaveManual').addEventListener('click', async ()=>{
   if(!date){ errEl.textContent = 'Seleziona una data.'; return; }
   if(!inTime){ errEl.textContent = "Inserisci almeno l'orario di entrata."; return; }
 
-  inTime = inTime.length===5 ? inTime+':00' : inTime;
-  outTime = outTime ? (outTime.length===5 ? outTime+':00' : outTime) : '';
+  // manteniamo solo ore:minuti, senza secondi
 
   const entryId = 'local-'+Date.now()+'-'+Math.random().toString(36).slice(2,7);
   const entry = {id: entryId, date, matricola, nome, in: inTime, out: outTime, manual:true, _pending: !!getSheetsUrl()};
@@ -676,9 +676,18 @@ let editingIdx = null;
 function renderLog(){
   const filterDate = document.getElementById('filterDate').value;
   const tbody = document.querySelector('#logTable tbody');
+  const summaryEl = document.getElementById('logSummary');
   tbody.innerHTML='';
   let rows = log.map((r,i)=>({...r, idx:i})).sort((a,b)=> (b.date+b.in).localeCompare(a.date+a.in));
   if(filterDate) rows = rows.filter(r=>r.date===filterDate);
+
+  const uniqueEmp = new Set(rows.map(r=>r.matricola)).size;
+  if(filterDate){
+    summaryEl.textContent = uniqueEmp + (uniqueEmp===1 ? ' dipendente ha timbrato' : ' dipendenti hanno timbrato') + ' il ' + fmtDate(filterDate) + ' (' + rows.length + ' timbrature)';
+  } else {
+    summaryEl.textContent = uniqueEmp + (uniqueEmp===1 ? ' dipendente' : ' dipendenti') + ' nel registro completo (' + rows.length + ' timbrature)';
+  }
+
   if(rows.length===0){
     tbody.innerHTML = '<tr><td colspan="6" class="empty">Nessuna timbratura trovata</td></tr>';
     return;
@@ -687,8 +696,8 @@ function renderLog(){
     const tr = document.createElement('tr');
     if(r.idx === editingIdx){
       tr.innerHTML = '<td>'+fmtDate(r.date)+'</td><td>'+r.matricola+'</td><td>'+r.nome+'</td>'
-        +'<td><input type="time" step="1" id="editIn" value="'+(r.in||'')+'" style="margin:0;padding:6px;font-size:13px;"></td>'
-        +'<td><input type="time" step="1" id="editOut" value="'+(r.out||'')+'" style="margin:0;padding:6px;font-size:13px;"></td>'
+        +'<td><input type="time" id="editIn" value="'+(r.in||'')+'" style="margin:0;padding:6px;font-size:13px;"></td>'
+        +'<td><input type="time" id="editOut" value="'+(r.out||'')+'" style="margin:0;padding:6px;font-size:13px;"></td>'
         +'<td style="white-space:nowrap;"><button class="delBtn" id="saveEditBtn" style="color:var(--accent);border-color:var(--accent);" data-idx="'+r.idx+'">Salva</button> '
         +'<button class="delBtn" id="cancelEditBtn">Annulla</button></td>';
     } else {
@@ -770,8 +779,9 @@ async function saveLogEdit(idx){
     return;
   }
   const entry = log[idx];
-  entry.in = newIn.length===5 ? newIn+':00' : newIn;
-  entry.out = newOut ? (newOut.length===5 ? newOut+':00' : newOut) : '';
+  // manteniamo solo ore:minuti, senza secondi
+  entry.in = newIn;
+  entry.out = newOut || '';
   editingIdx = null;
   saveLocalCache();
   renderLog();
@@ -825,6 +835,7 @@ function renderMissing(){
   });
 }
 document.getElementById('missingDate').addEventListener('change', renderMissing);
+document.getElementById('filterDate').addEventListener('change', renderLog);
 
 function renderRecent(){
   const el = document.getElementById('recentList');
@@ -842,31 +853,85 @@ function renderRecent(){
   }).join('');
 }
 
+function excelTimeFraction(t){
+  if(!t) return null;
+  const parts = String(t).split(':').map(Number);
+  const h = parts[0]||0, m = parts[1]||0, s = parts[2]||0;
+  return (h*3600 + m*60 + s) / 86400;
+}
+function dateFilteredLogForExport(){
+  const filterDate = document.getElementById('filterDate').value;
+  let rows = log.slice();
+  if(filterDate) rows = rows.filter(r=>r.date===filterDate);
+  return rows.sort((a,b)=>(a.date+a.in).localeCompare(b.date+b.in));
+}
+
 document.getElementById('btnExportXlsx').addEventListener('click', ()=>{
   if(typeof XLSX === 'undefined'){
     alert('Per esportare in Excel serve una connessione internet (la prima volta, per caricare il modulo). Puoi comunque esportare in CSV anche offline.');
     return;
   }
+  const rows = dateFilteredLogForExport();
   const data = [['Data','Matricola','Nominativo','Entrata','Uscita']];
-  log.slice().sort((a,b)=>(a.date+a.in).localeCompare(b.date+b.in)).forEach(r=>{
+  rows.forEach(r=>{
     data.push([r.date, r.matricola, r.nome, r.in||'', r.out||'']);
   });
   const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // Converte Data/Entrata/Uscita in VERI valori data/ora Excel (non testo),
+  // così le formule (es. calcolo ore lavorate, confronto/CERCA per data)
+  // funzionano anche copiando i dati in un altro foglio. La Data viene
+  // comunque MOSTRATA come dd/mm/aaaa grazie al formato applicato qui sotto.
+  // La Matricola viene scritta come VERO NUMERO (non testo): se nell'altro
+  // foglio la matricola è anch'essa un numero, CERCA.VERT/VLOOKUP funziona
+  // correttamente — testo e numero non vengono mai considerati uguali da
+  // Excel anche se sembrano identici a vista (es. "62620" testo ≠ 62620 numero).
+  for(let i=0; i<rows.length; i++){
+    const r = rows[i];
+    const rowIdx = i + 1; // riga 0 = intestazione
+
+    if(r.date){
+      const [y,mo,d] = r.date.split('-').map(Number);
+      const dateAddr = XLSX.utils.encode_cell({r: rowIdx, c: 0});
+      ws[dateAddr] = {t:'d', v: new Date(y, mo-1, d), z:'dd/mm/yyyy'};
+    }
+
+    const matNum = Number(r.matricola);
+    if(r.matricola !== '' && !isNaN(matNum)){
+      const matAddr = XLSX.utils.encode_cell({r: rowIdx, c: 1});
+      ws[matAddr] = {t:'n', v: matNum, z:'0'};
+    }
+
+    const inFrac = excelTimeFraction(r.in);
+    if(inFrac !== null){
+      const inAddr = XLSX.utils.encode_cell({r: rowIdx, c: 3});
+      ws[inAddr] = {t:'n', v: inFrac, z:'hh:mm:ss'};
+    }
+    const outFrac = excelTimeFraction(r.out);
+    if(outFrac !== null){
+      const outAddr = XLSX.utils.encode_cell({r: rowIdx, c: 4});
+      ws[outAddr] = {t:'n', v: outFrac, z:'hh:mm:ss'};
+    }
+  }
+
   ws['!cols'] = [{wch:12},{wch:12},{wch:25},{wch:10},{wch:10}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Timbrature');
-  XLSX.writeFile(wb, 'timbrature_'+todayStr()+'.xlsx');
+  const filterDate = document.getElementById('filterDate').value;
+  XLSX.writeFile(wb, 'timbrature_'+(filterDate || todayStr())+'.xlsx');
 });
 
 document.getElementById('btnExportCsv').addEventListener('click', ()=>{
+  const rows = dateFilteredLogForExport();
   let csv = 'Data,Matricola,Nominativo,Entrata,Uscita\n';
-  log.slice().sort((a,b)=>(a.date+a.in).localeCompare(b.date+b.in)).forEach(r=>{
-    csv += [r.date, r.matricola, '"'+r.nome+'"', r.in||'', r.out||''].join(',') + '\n';
+  rows.forEach(r=>{
+    csv += [fmtDate(r.date), r.matricola, '"'+r.nome+'"', r.in||'', r.out||''].join(',') + '\n';
   });
   const blob = new Blob([csv], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'timbrature_'+todayStr()+'.csv';
+  const filterDate = document.getElementById('filterDate').value;
+  a.download = 'timbrature_'+(filterDate || todayStr())+'.csv';
   a.click();
 });
 
@@ -921,7 +986,7 @@ function updateLiveClock(){
   const el = document.getElementById('liveClock');
   const dateEl = document.getElementById('liveDate');
   const now = new Date();
-  if(el) el.textContent = nowStr();
+  if(el) el.textContent = now.toTimeString().slice(0,8); // orologio a schermo: con i secondi, solo visivo
   if(dateEl) dateEl.textContent = GIORNI[now.getDay()] + ' ' + now.getDate() + ' ' + MESI[now.getMonth()];
 }
 setInterval(updateLiveClock, 1000);
